@@ -1,0 +1,69 @@
+#autoload
+#!bin/zsh
+
+bytes-readable()
+{
+    local    e
+    local -a units
+    local -i size=$1
+    if (( size == 0 )); then
+        echo "0.00 B"
+        return 0
+    fi
+    units=('B' 'KB' 'MB' 'GB' 'TB')
+    e=$(( ( int( log(size) / log(1024) ) )))
+    builtin printf "%d $units[$e+1]\n" $(( int( size / ( 1024 ** floor(e) ) ) ))
+}
+
+count-files() {
+    if (( $argv[1] > 0 )); then
+        echo "($argv[1])"
+    fi
+}
+
+link-resolve() {
+    local _path="$argv[1]"
+    if [[ -n $_path ]]; then
+        if [[ -d $_path ]]; then
+            _path="$fg[blue]$_path$reset_color/"
+        fi
+        print -- "-> $_path"
+    fi
+}
+
+zmodload zsh/mapfile
+zmodload zsh/mathfunc
+zmodload zsh/stat
+
+autoload -Uz colors
+colors
+
+local    file
+local -A stathash
+local -a subfiles
+
+builtin cd -q "${argv[1]:-$PWD}"
+
+for file in "${(k)mapfile[@]}"
+do
+    subfiles=()
+    # device inode mode nlink uid gid rdev size atime mtime ctime blksize blocks link
+    stat -H stathash -o -F "%F %H:%M" -L -- "$file"
+
+    subfiles=( "$file"/*(N) )
+    if [[ -n $stathash[link] ]]; then
+        file="$fg[magenta]$file$reset_color"
+    else
+        if [[ -d $file ]]; then
+            file="$fg[blue]$file$reset_color/"
+        fi
+    fi
+
+    builtin printf -- "$fg[yellow]%s$reset_color %s [%4d %2s]  %s %s %s\n" \
+        "$stathash[ctime]" \
+        "$stathash[mode]" \
+        $(bytes-readable "$stathash[size]") \
+        "$file" \
+        "$(link-resolve $stathash[link])" \
+        "$(count-files $#subfiles)"
+done
